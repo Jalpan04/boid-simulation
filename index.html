@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boids Simulation: Predator & Prey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .control-group label {
+            color: #D1D5DB; /* text-gray-300 */
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .control-group .value {
+            color: #F9FAFB; /* text-gray-50 */
+            font-size: 0.75rem;
+            min-width: 2rem;
+            text-align: center;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 120px;
+            height: 6px;
+            background: #4B5563; /* bg-gray-600 */
+            border-radius: 3px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #60A5FA; /* bg-blue-400 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #60A5FA; /* bg-blue-400 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            color: #D1D5DB;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <canvas id="boidsCanvas"></canvas>
+
+    <!-- Info Panel for Controls -->
+    <div class="info-panel">
+        <p class="font-semibold">You are the Predator:</p>
+        <p><kbd>Arrow Keys</kbd> - Hunt the flock</p>
+        <p><kbd>Spacebar</kbd> - Pause / Play</p>
+    </div>
+
+    <!-- Menu Toggle Button -->
+    <button id="menu-btn" class="fixed top-5 right-5 z-20 p-2 rounded-md bg-gray-800/80 text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <svg id="menu-open-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+        <svg id="menu-close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+    </button>
+
+    <!-- Settings Panel (hidden by default) -->
+    <div id="settings-panel" class="hidden fixed top-20 right-5 bg-gray-800/80 backdrop-filter backdrop-blur-lg p-6 rounded-lg shadow-xl z-10 flex flex-col gap-4">
+        <div class="control-group">
+            <label for="alignment">Alignment</label>
+            <input type="range" id="alignment" min="0" max="2" value="1" step="0.1">
+            <span id="alignment-value" class="value">1.0</span>
+        </div>
+        <div class="control-group">
+            <label for="cohesion">Cohesion</label>
+            <input type="range" id="cohesion" min="0" max="2" value="1" step="0.1">
+            <span id="cohesion-value" class="value">1.0</span>
+        </div>
+        <div class="control-group">
+            <label for="separation">Separation</label>
+            <input type="range" id="separation" min="0" max="2" value="1.2" step="0.1">
+            <span id="separation-value" class="value">1.2</span>
+        </div>
+        <hr class="border-gray-600 w-full">
+        <div class="flex items-center justify-between w-full">
+            <label for="debug" class="text-gray-300 text-sm font-medium">Debug Visuals</label>
+            <input type="checkbox" id="debug" class="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2">
+        </div>
+    </div>
+
+    <script>
+        // --- Vector Class for 2D math ---
+        class Vector {
+            constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+            add(v) { this.x += v.x; this.y += v.y; return this; }
+            sub(v) { this.x -= v.x; this.y -= v.y; return this; }
+            mult(s) { this.x *= s; this.y *= s; return this; }
+            div(s) { if (s !== 0) { this.x /= s; this.y /= s; } return this; }
+            mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+            normalize() { const m = this.mag(); if (m > 0) { this.div(m); } return this; }
+            setMag(len) { return this.normalize().mult(len); }
+            limit(max) { const mSq = this.x * this.x + this.y * this.y; if (mSq > max * max) { this.div(Math.sqrt(mSq)).mult(max); } return this; }
+            static sub(v1, v2) { return new Vector(v1.x - v2.x, v1.y - v2.y); }
+            static dist(v1, v2) { const dx = v1.x - v2.x; const dy = v1.y - v2.y; return Math.sqrt(dx * dx + dy * dy); }
+        }
+
+        // --- Boid Class (Prey) ---
+        class Boid {
+            constructor() {
+                this.position = new Vector(Math.random() * canvas.width, Math.random() * canvas.height);
+                this.velocity = new Vector(Math.random() * 2 - 1, Math.random() * 2 - 1);
+                this.velocity.setMag(Math.random() * 2 + 2);
+                this.acceleration = new Vector();
+                this.maxForce = 0.2;
+                this.maxSpeed = 3.5;
+                this.perceptionRadius = 50;
+                
+                // Properties to store forces for debugging
+                this.alignmentForce = new Vector();
+                this.cohesionForce = new Vector();
+                this.separationForce = new Vector();
+                this.fleeForce = new Vector();
+            }
+
+            edges() { /* ... same as before ... */ }
+            align(boids) { /* ... same as before ... */ }
+            cohesion(boids) { /* ... same as before ... */ }
+            separation(boids) { /* ... same as before ... */ }
+            flee(boids) { /* ... same as before ... */ }
+
+            flock(boids) {
+                this.fleeForce = this.flee(boids);
+                this.alignmentForce = this.align(boids);
+                this.cohesionForce = this.cohesion(boids);
+                this.separationForce = this.separation(boids);
+
+                this.fleeForce.mult(3.0); 
+                this.alignmentForce.mult(alignmentSlider.value);
+                this.cohesionForce.mult(cohesionSlider.value);
+                this.separationForce.mult(separationSlider.value);
+
+                this.acceleration.add(this.fleeForce);
+                this.acceleration.add(this.alignmentForce);
+                this.acceleration.add(this.cohesionForce);
+                this.acceleration.add(this.separationForce);
+            }
+
+            update() { /* ... same as before ... */ }
+            draw(ctx) { /* ... same as before ... */ }
+        }
+        
+        // --- PredatorBoid Class (Player Controlled) ---
+        class PredatorBoid extends Boid {
+            constructor() {
+                super();
+                this.maxSpeed = 4.5;
+            }
+
+            flock(boids) {
+                this.separationForce = this.separation(boids);
+                this.separationForce.mult(separationSlider.value * 1.5);
+                this.acceleration.add(this.separationForce);
+            }
+
+            handleControls(keys) { /* ... same as before ... */ }
+            draw(ctx) { /* ... same as before ... */ }
+        }
+
+        // --- Main Setup and Animation Loop ---
+        const canvas = document.getElementById('boidsCanvas');
+        const ctx = canvas.getContext('2d');
+        const menuBtn = document.getElementById('menu-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+        const menuOpenIcon = document.getElementById('menu-open-icon');
+        const menuCloseIcon = document.getElementById('menu-close-icon');
+        const debugCheckbox = document.getElementById('debug');
+
+        const alignmentSlider = document.getElementById('alignment');
+        const cohesionSlider = document.getElementById('cohesion');
+        const separationSlider = document.getElementById('separation');
+        
+        const alignmentValue = document.getElementById('alignment-value');
+        const cohesionValue = document.getElementById('cohesion-value');
+        const separationValue = document.getElementById('separation-value');
+
+        const flock = [];
+        let predator;
+        let isPaused = false;
+        const keysPressed = {};
+
+        function setup() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            flock.length = 0;
+            const boidCount = Math.min(Math.floor(canvas.width * canvas.height / 10000), 200);
+            
+            predator = new PredatorBoid();
+            flock.push(predator);
+
+            for (let i = 0; i < boidCount - 1; i++) {
+                flock.push(new Boid());
+            }
+
+            alignmentSlider.oninput = () => alignmentValue.textContent = parseFloat(alignmentSlider.value).toFixed(1);
+            cohesionSlider.oninput = () => cohesionValue.textContent = parseFloat(cohesionSlider.value).toFixed(1);
+            separationSlider.oninput = () => separationValue.textContent = parseFloat(separationSlider.value).toFixed(1);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isPaused) { /* ... pause logic ... */ return; }
+
+            ctx.fillStyle = 'rgba(17, 24, 39, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            predator.handleControls(keysPressed);
+
+            for (let boid of flock) {
+                boid.edges();
+                boid.flock(flock);
+                boid.update();
+                boid.draw(ctx);
+                drawDebug(boid); // Draw debug visuals for each boid
+            }
+        }
+
+        // --- Helper function for drawing debug visuals ---
+        function drawVector(ctx, base, vec, color, scale = 50) {
+            if (vec.mag() === 0) return;
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(base.x, base.y);
+            ctx.lineTo(base.x + vec.x * scale, base.y + vec.y * scale);
+            ctx.stroke();
+            ctx.translate(base.x + vec.x * scale, base.y + vec.y * scale);
+            ctx.rotate(Math.atan2(vec.y, vec.x));
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-6, -3);
+            ctx.lineTo(-6, 3);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawDebug(boid) {
+            if (!debugCheckbox.checked) return;
+
+            // Draw perception radius
+            ctx.beginPath();
+            ctx.arc(boid.position.x, boid.position.y, boid.perceptionRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.stroke();
+            
+            // Draw flee radius for prey
+            if (!(boid instanceof PredatorBoid)) {
+                ctx.beginPath();
+                ctx.arc(boid.position.x, boid.position.y, boid.perceptionRadius * 2.5, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 0, 0.1)';
+                ctx.stroke();
+            }
+
+            // Draw force vectors
+            drawVector(ctx, boid.position, boid.alignmentForce, 'rgba(0, 255, 0, 0.5)');   // Green
+            drawVector(ctx, boid.position, boid.cohesionForce, 'rgba(60, 100, 255, 0.5)');  // Blue
+            drawVector(ctx, boid.position, boid.separationForce, 'rgba(255, 0, 0, 0.5)'); // Red
+            drawVector(ctx, boid.position, boid.fleeForce, 'rgba(255, 255, 0, 0.7)');      // Yellow
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', setup);
+        menuBtn.addEventListener('click', () => { /* ... menu logic ... */ });
+        window.addEventListener('keydown', (e) => { /* ... key logic ... */ });
+        window.addEventListener('keyup', (e) => { /* ... key logic ... */ });
+
+        // --- Full Method Implementations (to keep it runnable) ---
+        Boid.prototype.edges = function() { if (this.position.x > canvas.width) this.position.x = 0; else if (this.position.x < 0) this.position.x = canvas.width; if (this.position.y > canvas.height) this.position.y = 0; else if (this.position.y < 0) this.position.y = canvas.height; };
+        Boid.prototype.update = function() { this.position.add(this.velocity); this.velocity.add(this.acceleration); this.velocity.limit(this.maxSpeed); this.acceleration.mult(0); };
+        Boid.prototype.draw = function(ctx) { ctx.save(); ctx.translate(this.position.x, this.position.y); ctx.rotate(Math.atan2(this.velocity.y, this.velocity.x)); ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-5, -5); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fillStyle = 'rgba(96, 165, 250, 0.8)'; ctx.fill(); ctx.restore(); };
+        PredatorBoid.prototype.handleControls = function(keys) { const moveForce = 0.4; if (keys['ArrowUp']) this.acceleration.add(new Vector(0, -moveForce)); if (keys['ArrowDown']) this.acceleration.add(new Vector(0, moveForce)); if (keys['ArrowLeft']) this.acceleration.add(new Vector(-moveForce, 0)); if (keys['ArrowRight']) this.acceleration.add(new Vector(moveForce, 0)); };
+        PredatorBoid.prototype.draw = function(ctx) { ctx.save(); ctx.translate(this.position.x, this.position.y); ctx.rotate(Math.atan2(this.velocity.y, this.velocity.x)); ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fillStyle = 'rgba(239, 68, 68, 0.9)'; ctx.fill(); ctx.restore(); };
+        Boid.prototype.flee = function(boids) { let steering = new Vector(); let total = 0; const fleeRadius = this.perceptionRadius * 2.5; for (let other of boids) { if (other instanceof PredatorBoid) { let d = Vector.dist(this.position, other.position); if (d < fleeRadius) { let diff = Vector.sub(this.position, other.position); diff.div(d * d); steering.add(diff); total++; } } } if (total > 0) { steering.div(total).setMag(this.maxSpeed).sub(this.velocity).limit(this.maxForce * 2.0); } return steering; };
+        Boid.prototype.align = function(boids) { let steering = new Vector(); let total = 0; for (let other of boids) { if (other instanceof PredatorBoid) continue; let d = Vector.dist(this.position, other.position); if (other !== this && d < this.perceptionRadius) { steering.add(other.velocity); total++; } } if (total > 0) { steering.div(total).setMag(this.maxSpeed).sub(this.velocity).limit(this.maxForce); } return steering; };
+        Boid.prototype.cohesion = function(boids) { let steering = new Vector(); let total = 0; for (let other of boids) { if (other instanceof PredatorBoid) continue; let d = Vector.dist(this.position, other.position); if (other !== this && d < this.perceptionRadius) { steering.add(other.position); total++; } } if (total > 0) { steering.div(total).sub(this.position).setMag(this.maxSpeed).sub(this.velocity).limit(this.maxForce); } return steering; };
+        Boid.prototype.separation = function(boids) { let steering = new Vector(); let total = 0; for (let other of boids) { let d = Vector.dist(this.position, other.position); if (other !== this && d < this.perceptionRadius) { let diff = Vector.sub(this.position, other.position); diff.div(d * d); steering.add(diff); total++; } } if (total > 0) { steering.div(total).setMag(this.maxSpeed).sub(this.velocity).limit(this.maxForce); } return steering; };
+        menuBtn.addEventListener('click', () => { settingsPanel.classList.toggle('hidden'); menuOpenIcon.classList.toggle('hidden'); menuCloseIcon.classList.toggle('hidden'); });
+        window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); isPaused = !isPaused; } else { keysPressed[e.key] = true; } });
+        window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; });
+        animate.call = function() { if (isPaused) { ctx.fillStyle = 'rgba(249, 250, 251, 0.7)'; ctx.font = 'bold 50px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Paused', canvas.width / 2, canvas.height / 2); return; } };
+
+
+        // Initial setup and start animation
+        setup();
+        animate();
+    </script>
+</body>
+</html>
