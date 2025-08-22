@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Boids Simulation: Predator & Prey</title>
+    <title>Boids Simulation: Advanced Behaviors</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,7 @@
             align-items: center;
             gap: 0.5rem;
         }
-        .control-group label {
+        .control-group label, .toggle-group label {
             color: #D1D5DB; /* text-gray-300 */
             font-size: 0.875rem;
             font-weight: 500;
@@ -77,6 +77,12 @@
             color: #D1D5DB;
             z-index: 10;
         }
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
     </style>
 </head>
 <body class="bg-gray-900">
@@ -113,8 +119,18 @@
             <span id="separation-value" class="value">1.2</span>
         </div>
         <hr class="border-gray-600 w-full">
-        <div class="flex items-center justify-between w-full">
-            <label for="debug" class="text-gray-300 text-sm font-medium">Debug Visuals</label>
+        <div class="toggle-group">
+            <label for="wind">Wind</label>
+            <input type="checkbox" id="wind" class="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2">
+        </div>
+        <div class="control-group">
+            <label for="windDirection">Wind Direction</label>
+            <input type="range" id="windDirection" min="0" max="360" value="0" step="1">
+            <span id="windDirection-value" class="value">0°</span>
+        </div>
+        <hr class="border-gray-600 w-full">
+        <div class="toggle-group">
+            <label for="debug">Debug Visuals</label>
             <input type="checkbox" id="debug" class="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2">
         </div>
     </div>
@@ -145,8 +161,8 @@
                 this.maxForce = 0.2;
                 this.maxSpeed = 3.5;
                 this.perceptionRadius = 50;
-                
-                // Properties to store forces for debugging
+
+                // Debugging forces
                 this.alignmentForce = new Vector();
                 this.cohesionForce = new Vector();
                 this.separationForce = new Vector();
@@ -174,10 +190,32 @@
                 this.acceleration.add(this.alignmentForce);
                 this.acceleration.add(this.cohesionForce);
                 this.acceleration.add(this.separationForce);
+                
+                if (windCheckbox.checked) {
+                    this.acceleration.add(windForce);
+                }
             }
 
-            update() { /* ... same as before ... */ }
-            draw(ctx) { /* ... same as before ... */ }
+            update() {
+                this.position.add(this.velocity);
+                this.velocity.add(this.acceleration);
+                this.velocity.limit(this.maxSpeed);
+                this.acceleration.mult(0);
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.position.x, this.position.y);
+                ctx.rotate(Math.atan2(this.velocity.y, this.velocity.x));
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(-5, -5);
+                ctx.lineTo(-5, 5);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(96, 165, 250, 0.8)';
+                ctx.fill();
+                ctx.restore();
+            }
         }
         
         // --- PredatorBoid Class (Player Controlled) ---
@@ -191,6 +229,17 @@
                 this.separationForce = this.separation(boids);
                 this.separationForce.mult(separationSlider.value * 1.5);
                 this.acceleration.add(this.separationForce);
+                 if (windCheckbox.checked) {
+                    this.acceleration.add(windForce);
+                }
+            }
+
+            update() {
+                // Predator doesn't perch
+                this.position.add(this.velocity);
+                this.velocity.add(this.acceleration);
+                this.velocity.limit(this.maxSpeed);
+                this.acceleration.mult(0);
             }
 
             handleControls(keys) { /* ... same as before ... */ }
@@ -205,6 +254,9 @@
         const menuOpenIcon = document.getElementById('menu-open-icon');
         const menuCloseIcon = document.getElementById('menu-close-icon');
         const debugCheckbox = document.getElementById('debug');
+        const windCheckbox = document.getElementById('wind');
+        const windDirectionSlider = document.getElementById('windDirection');
+        const windDirectionValue = document.getElementById('windDirection-value');
 
         const alignmentSlider = document.getElementById('alignment');
         const cohesionSlider = document.getElementById('cohesion');
@@ -218,6 +270,8 @@
         let predator;
         let isPaused = false;
         const keysPressed = {};
+        const windForce = new Vector(0.1, 0);
+        const windMagnitude = 0.1;
 
         function setup() {
             canvas.width = window.innerWidth;
@@ -236,6 +290,13 @@
             alignmentSlider.oninput = () => alignmentValue.textContent = parseFloat(alignmentSlider.value).toFixed(1);
             cohesionSlider.oninput = () => cohesionValue.textContent = parseFloat(cohesionSlider.value).toFixed(1);
             separationSlider.oninput = () => separationValue.textContent = parseFloat(separationSlider.value).toFixed(1);
+            windDirectionSlider.oninput = () => {
+                const angleDeg = windDirectionSlider.value;
+                windDirectionValue.textContent = `${angleDeg}°`;
+                const angleRad = angleDeg * Math.PI / 180;
+                windForce.x = Math.cos(angleRad) * windMagnitude;
+                windForce.y = Math.sin(angleRad) * windMagnitude;
+            };
         }
 
         function animate() {
@@ -253,55 +314,13 @@
                 boid.flock(flock);
                 boid.update();
                 boid.draw(ctx);
-                drawDebug(boid); // Draw debug visuals for each boid
+                drawDebug(boid);
             }
         }
 
         // --- Helper function for drawing debug visuals ---
-        function drawVector(ctx, base, vec, color, scale = 50) {
-            if (vec.mag() === 0) return;
-            ctx.save();
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(base.x, base.y);
-            ctx.lineTo(base.x + vec.x * scale, base.y + vec.y * scale);
-            ctx.stroke();
-            ctx.translate(base.x + vec.x * scale, base.y + vec.y * scale);
-            ctx.rotate(Math.atan2(vec.y, vec.x));
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(-6, -3);
-            ctx.lineTo(-6, 3);
-            ctx.closePath();
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.restore();
-        }
-
-        function drawDebug(boid) {
-            if (!debugCheckbox.checked) return;
-
-            // Draw perception radius
-            ctx.beginPath();
-            ctx.arc(boid.position.x, boid.position.y, boid.perceptionRadius, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.stroke();
-            
-            // Draw flee radius for prey
-            if (!(boid instanceof PredatorBoid)) {
-                ctx.beginPath();
-                ctx.arc(boid.position.x, boid.position.y, boid.perceptionRadius * 2.5, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255, 255, 0, 0.1)';
-                ctx.stroke();
-            }
-
-            // Draw force vectors
-            drawVector(ctx, boid.position, boid.alignmentForce, 'rgba(0, 255, 0, 0.5)');   // Green
-            drawVector(ctx, boid.position, boid.cohesionForce, 'rgba(60, 100, 255, 0.5)');  // Blue
-            drawVector(ctx, boid.position, boid.separationForce, 'rgba(255, 0, 0, 0.5)'); // Red
-            drawVector(ctx, boid.position, boid.fleeForce, 'rgba(255, 255, 0, 0.7)');      // Yellow
-        }
+        function drawVector(ctx, base, vec, color, scale = 50) { /* ... same as before ... */ }
+        function drawDebug(boid) { /* ... same as before ... */ }
 
         // --- Event Listeners ---
         window.addEventListener('resize', setup);
@@ -311,8 +330,6 @@
 
         // --- Full Method Implementations (to keep it runnable) ---
         Boid.prototype.edges = function() { if (this.position.x > canvas.width) this.position.x = 0; else if (this.position.x < 0) this.position.x = canvas.width; if (this.position.y > canvas.height) this.position.y = 0; else if (this.position.y < 0) this.position.y = canvas.height; };
-        Boid.prototype.update = function() { this.position.add(this.velocity); this.velocity.add(this.acceleration); this.velocity.limit(this.maxSpeed); this.acceleration.mult(0); };
-        Boid.prototype.draw = function(ctx) { ctx.save(); ctx.translate(this.position.x, this.position.y); ctx.rotate(Math.atan2(this.velocity.y, this.velocity.x)); ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-5, -5); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fillStyle = 'rgba(96, 165, 250, 0.8)'; ctx.fill(); ctx.restore(); };
         PredatorBoid.prototype.handleControls = function(keys) { const moveForce = 0.4; if (keys['ArrowUp']) this.acceleration.add(new Vector(0, -moveForce)); if (keys['ArrowDown']) this.acceleration.add(new Vector(0, moveForce)); if (keys['ArrowLeft']) this.acceleration.add(new Vector(-moveForce, 0)); if (keys['ArrowRight']) this.acceleration.add(new Vector(moveForce, 0)); };
         PredatorBoid.prototype.draw = function(ctx) { ctx.save(); ctx.translate(this.position.x, this.position.y); ctx.rotate(Math.atan2(this.velocity.y, this.velocity.x)); ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fillStyle = 'rgba(239, 68, 68, 0.9)'; ctx.fill(); ctx.restore(); };
         Boid.prototype.flee = function(boids) { let steering = new Vector(); let total = 0; const fleeRadius = this.perceptionRadius * 2.5; for (let other of boids) { if (other instanceof PredatorBoid) { let d = Vector.dist(this.position, other.position); if (d < fleeRadius) { let diff = Vector.sub(this.position, other.position); diff.div(d * d); steering.add(diff); total++; } } } if (total > 0) { steering.div(total).setMag(this.maxSpeed).sub(this.velocity).limit(this.maxForce * 2.0); } return steering; };
@@ -323,7 +340,8 @@
         window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); isPaused = !isPaused; } else { keysPressed[e.key] = true; } });
         window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; });
         animate.call = function() { if (isPaused) { ctx.fillStyle = 'rgba(249, 250, 251, 0.7)'; ctx.font = 'bold 50px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Paused', canvas.width / 2, canvas.height / 2); return; } };
-
+        function drawVector(ctx, base, vec, color, scale = 50) { if (vec.mag() === 0) return; ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(base.x + vec.x * scale, base.y + vec.y * scale); ctx.stroke(); ctx.translate(base.x + vec.x * scale, base.y + vec.y * scale); ctx.rotate(Math.atan2(vec.y, vec.x)); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-6, -3); ctx.lineTo(-6, 3); ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore(); }
+        function drawDebug(boid) { if (!debugCheckbox.checked) return; ctx.beginPath(); ctx.arc(boid.position.x, boid.position.y, boid.perceptionRadius, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.stroke(); if (!(boid instanceof PredatorBoid)) { ctx.beginPath(); ctx.arc(b.position.x, b.position.y, b.perceptionRadius * 2.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255, 255, 0, 0.1)'; ctx.stroke(); } drawVector(ctx, boid.position, boid.alignmentForce, 'rgba(0, 255, 0, 0.5)'); drawVector(ctx, boid.position, boid.cohesionForce, 'rgba(60, 100, 255, 0.5)'); drawVector(ctx, boid.position, boid.separationForce, 'rgba(255, 0, 0, 0.5)'); drawVector(ctx, boid.position, boid.fleeForce, 'rgba(255, 255, 0, 0.7)'); }
 
         // Initial setup and start animation
         setup();
