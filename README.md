@@ -38,7 +38,7 @@ An interactive simulation of flocking behavior based on Craig Reynolds's "Boids"
 
 ## 🖼️ Screenshots
 
-*(You can add screenshots of your simulation here to showcase its features.)*
+![Boids simulation screenshot](boid.png)
 
 **Example of the simulation with debug visuals turned on:**
 
