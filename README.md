@@ -1,5 +1,7 @@
 # Boid Simulation
 
+![GitHub top language](https://img.shields.io/github/languages/top/Jalpan04/boid-simulation) ![GitHub repo size](https://img.shields.io/github/repo-size/Jalpan04/boid-simulation) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 An interactive simulation of flocking behavior based on Craig Reynolds's "Boids" algorithm. This project demonstrates emergent behavior by applying a simple set of rules to individual agents, resulting in complex, life-like swarm intelligence. You can control a predator to interact with the flock and manipulate environmental factors like wind.
 
 **Live Demo:** [https://jalpan04.github.io/boid-simulation/](https://jalpan04.github.io/boid-simulation/)
