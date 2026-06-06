@@ -53,3 +53,7 @@ git clone https://github.com/jalpan04/boid-simulation.git
 cd boid-simulation
 # Open index.html in your browser
 ```
+
+## License
+
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
